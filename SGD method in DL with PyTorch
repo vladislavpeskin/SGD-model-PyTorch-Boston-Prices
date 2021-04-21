@@ -1,0 +1,69 @@
+# импортируем модули
+import torch
+import torch.nn.functional as func
+import torch.nn as nn
+import pandas as pd
+from torch.utils.data import TensorDataset
+from torch.utils.data import DataLoader
+
+# чмитаем файл без заголовков и делим по пробелам
+dataset = pd.read_csv("housing.csv", delim_whitespace = True, header=None)
+
+# называем столбцы
+dataset.columns = ['CRIM', 'ZN', 'INDUS', 'CHAS', 'NOX', 'RM', 'AGE', 'DIS', 'RAD', 'TAX', 'PTRATIO', 'B-1000', 'LSTAT', 'MEDV']
+
+# делаем тензоры
+x_ar = torch.from_numpy(dataset.to_numpy())[:,:-1].float()
+y_ar = torch.from_numpy(dataset.to_numpy()) [:,-1]
+
+# создаём таблицу с нормализованными данными
+means = x_ar.mean(dim=0, keepdim=True)
+stds = x_ar.std(dim=0, keepdim=True)
+normalized_data = (x_ar - means) / stds
+
+# в таблице с нормализованными данными заменяем dummy variables на ненормализованные
+for i in range(506):
+  normalized_data[i, 3] = torch.tensor([x_ar[i, 3]])
+  normalized_data[i, 8] = torch.tensor([x_ar[i, 8]])
+
+normalized_data.shape
+y_ar = y_ar.reshape(506, 1)
+
+# задаём датасет
+training_data = TensorDataset(normalized_data, y_ar)
+
+# задаём linear model, у нас 13 переменных входит, 1 на выходе
+model = nn.Linear(13, 1)
+
+# создаём оптимизатор 
+opt = torch.optim.SGD(model.parameters(), lr=0.00001)
+loss_fn = torch.nn.MSELoss()
+
+# создаём несколько batches к нашей модели
+batch_size = 10
+train_dl = DataLoader(training_data, batch_size, shuffle=True)
+
+# функция для обучения модели
+def fit(train_dl, num_epochs, model, loss_fn, opt):
+    
+    # повторяем заданное количество раз (3000)
+    for epoch in range(num_epochs+1):
+        
+        # обучаем модель для каждого batch
+        for xb,yb in train_dl:
+            
+            pred = model(xb)
+            loss = loss_fn(pred.view(-1), yb.float())
+            loss.backward()
+            opt.step()
+            opt.zero_grad()
+
+        if epoch % 100 == 0:
+          print(f'{epoch} : {loss_fn(model(normalized_data).view(-1), y_ar)}')
+
+# запускаем обучение
+fit(train_dl, 3000, model, loss_fn , opt)
+
+# получаем предсказанное значение y
+preds = model(normalized_data)
+preds
